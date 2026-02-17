@@ -1,0 +1,504 @@
+:root {
+  --bg-deep: #050505;
+  --bg-mid: #0b0c10;
+  --bg-soft: #141619;
+  --panel: rgba(11, 12, 16, 0.95);
+  --panel-solid: #0b0c10;
+  --line: #2c3e50;
+  --line-strong: #4a5d6e;
+  --text: #c5c6c7;
+  --muted: #66fcf1;
+  /* Cyber dark teal turned muted grey-blue for 40k? No, lets go parchment */
+  --muted: #8b9bb4;
+
+  /* Grim Dark Palette */
+  --gold: #c5a059;
+  --gold-dim: #7a602c;
+  --brass: #b59e54;
+  --crimson: #8d242c;
+  --plasma: #45a29e;
+  /* Optional glow */
+
+  --shadow-lg: 0 0 40px rgba(0, 0, 0, 0.8);
+  --radius-xl: 2px;
+  /* Sharp corners */
+  --radius-lg: 2px;
+  --radius-md: 2px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  min-height: 100%;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  color: var(--text);
+  font-family: "Rajdhani", "Segoe UI", sans-serif;
+  font-weight: 500;
+  background-color: #000;
+  background-image:
+    radial-gradient(circle at 50% 0%, #1a1a20, #000000);
+}
+
+/* Gritty Texture Overlay */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.05'/%3E%3C/svg%3E");
+  opacity: 0.15;
+  z-index: 9999;
+}
+
+.app-shell {
+  width: min(1080px, 92vw);
+  margin: 40px auto 60px;
+  display: grid;
+  gap: 24px;
+}
+
+/* --- Typrography --- */
+h1,
+h2,
+.eyebrow {
+  font-family: "Cinzel", serif;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+h1 {
+  margin: 0;
+  font-weight: 700;
+  font-size: clamp(2.5rem, 5vw, 4rem);
+  color: var(--text);
+  text-shadow: 0 0 10px rgba(197, 160, 89, 0.3);
+  background: linear-gradient(to bottom, #fff, #999);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+h2 {
+  font-size: 1.4rem;
+  color: var(--gold);
+  border-bottom: 1px solid var(--gold-dim);
+  padding-bottom: 4px;
+  display: inline-block;
+}
+
+.eyebrow {
+  color: var(--gold-dim);
+  font-weight: 700;
+  font-size: 0.85rem;
+  letter-spacing: 0.2em;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.eyebrow::before {
+  content: "";
+  height: 1px;
+  width: 40px;
+  background: var(--gold-dim);
+}
+
+.subtitle {
+  font-family: "Rajdhani", sans-serif;
+  color: var(--muted);
+  font-size: 1.1rem;
+  margin-top: 8px;
+}
+
+/* --- Panels & Containers --- */
+.hero,
+.panel {
+  position: relative;
+  background: var(--panel);
+  border: 1px solid var(--gold-dim);
+  box-shadow:
+    0 0 0 1px #000,
+    /* Inner black line */
+    inset 0 0 20px rgba(0, 0, 0, 0.8);
+  padding: 24px;
+}
+
+.hero {
+  border-top: 4px solid var(--crimson);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* Corner Accents */
+.hero::after,
+.panel::after {
+  content: "";
+  position: absolute;
+  top: -1px;
+  left: -1px;
+  right: -1px;
+  bottom: -1px;
+  pointer-events: none;
+  border: 1px solid transparent;
+  /* Corner markings simulation */
+  background:
+    linear-gradient(to right, var(--gold) 2px, transparent 2px) 0 0,
+    linear-gradient(to bottom, var(--gold) 2px, transparent 2px) 0 0,
+    linear-gradient(to left, var(--gold) 2px, transparent 2px) 100% 0,
+    linear-gradient(to bottom, var(--gold) 2px, transparent 2px) 100% 0,
+    linear-gradient(to right, var(--gold) 2px, transparent 2px) 0 100%,
+    linear-gradient(to top, var(--gold) 2px, transparent 2px) 0 100%,
+    linear-gradient(to left, var(--gold) 2px, transparent 2px) 100% 100%,
+    linear-gradient(to top, var(--gold) 2px, transparent 2px) 100% 100%;
+  background-repeat: no-repeat;
+  background-size: 12px 12px;
+}
+
+.logo-container {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  margin-bottom: 10px;
+}
+
+.chaos-logo {
+  width: 80px;
+  height: 80px;
+  color: var(--crimson);
+  /* Requires inline SVG usually, but filter works too */
+  filter: drop-shadow(0 0 8px rgba(141, 36, 44, 0.6));
+}
+
+/* --- Quick Menu --- */
+.quick-menu {
+  display: flex;
+  gap: 4px;
+  background: #000;
+  padding: 4px;
+  border: 1px solid var(--line);
+}
+
+.quick-menu a {
+  flex: 1;
+  text-align: center;
+  text-decoration: none;
+  font-family: "Cinzel", serif;
+  font-weight: 700;
+  font-size: 0.9rem;
+  color: var(--muted);
+  padding: 12px;
+  border: 1px solid transparent;
+  background: #0e0e12;
+  transition: all 0.2s;
+  text-transform: uppercase;
+}
+
+.quick-menu a:hover {
+  background: #1a1a20;
+  color: var(--gold);
+  border-color: var(--gold-dim);
+  box-shadow: inset 0 0 10px rgba(197, 160, 89, 0.1);
+}
+
+/* --- Inputs & Controls --- */
+.preset-grid {
+  display: flex;
+  gap: 12px;
+  /* Increased gap */
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+input {
+  min-width: 160px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 11px 13px;
+  color: var(--text);
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.03));
+  outline: none;
+  transition: border-color 140ms ease, box-shadow 140ms ease;
+}
+
+input:focus-visible {
+  border-color: var(--line-strong);
+  box-shadow: 0 0 0 3px rgba(68, 209, 255, 0.2);
+}
+
+.action,
+.ghost,
+.preset {
+  border-radius: 0;
+  /* Sharp corners per Grim Dark theme */
+  padding: 10px 18px;
+  /* More padding */
+  cursor: pointer;
+  border: 1px solid var(--gold-dim);
+  transition: all 0.2s ease;
+  font-family: "Cinzel", serif;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.action {
+  background: linear-gradient(180deg, #3d0f12, #2a080a);
+  color: #ffcece;
+  border-color: var(--crimson);
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+}
+
+.ghost,
+.preset {
+  color: var(--gold);
+  background: linear-gradient(180deg, #1a1b20, #0e0f12);
+  min-width: 60px;
+  text-align: center;
+}
+
+.ghost:hover,
+.preset:hover {
+  border-color: var(--gold);
+  color: #fff;
+  background: linear-gradient(180deg, #252830, #15171c);
+  box-shadow: 0 0 8px rgba(197, 160, 89, 0.2);
+  transform: translateY(-2px);
+}
+
+.count-picker {
+  display: flex;
+  align-items: center;
+  background: #000;
+  border: 1px solid var(--line);
+  padding: 2px;
+}
+
+.count-btn {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border: none;
+}
+
+.count-value {
+  width: 40px;
+  text-align: center;
+  font-family: "Rajdhani";
+  font-size: 1.2rem;
+  color: var(--gold);
+}
+
+/* --- Dice & Results --- */
+.dice-stage {
+  min-height: 200px;
+  /* Reduced from 250px */
+  background: radial-gradient(circle at center, #1a1a20, #000);
+  border: 1px solid var(--line);
+  position: relative;
+  overflow: hidden;
+  box-shadow: inset 0 0 50px #000;
+}
+
+#dice-canvas,
+.dice-box-host {
+  height: 200px;
+  /* Match container */
+}
+
+.chip-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+
+.die-chip {
+  background: #0f1014;
+  border: 1px solid var(--gold-dim);
+  color: var(--gold);
+  padding: 6px 14px;
+  font-family: "Rajdhani";
+  font-weight: 700;
+  font-size: 0.9rem;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+}
+
+.result {
+  margin-top: 16px;
+  background: rgba(0, 0, 0, 0.6);
+  border: 1px solid var(--line-strong);
+  border-left: 4px solid var(--gold);
+  padding: 16px;
+  font-family: "Cinzel", serif;
+  color: #fff;
+  font-size: 1.1rem;
+}
+
+/* --- Toggles --- */
+.toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  padding: 8px 12px;
+  border: 1px solid transparent;
+}
+
+.toggle:hover {
+  border-color: var(--line-strong);
+}
+
+.toggle input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--gold);
+  margin: 0;
+  cursor: pointer;
+}
+
+/* --- Cards --- */
+.card-stage,
+.tarot-stage {
+  min-height: 200px;
+  background:
+    linear-gradient(45deg, #08080a 25%, transparent 25%, transparent 75%, #08080a 75%, #08080a),
+    linear-gradient(45deg, #08080a 25%, transparent 25%, transparent 75%, #08080a 75%, #08080a);
+  background-color: #0c0d10;
+  background-size: 20px 20px;
+  background-position: 0 0, 10px 10px;
+  border: 1px solid var(--line);
+  padding: 20px;
+  display: grid;
+  place-items: center;
+}
+
+.draw-grid {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.draw-grid img {
+  border: 2px solid var(--gold-dim);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.8);
+  max-width: 120px;
+  /* Slightly smaller for better fit */
+}
+
+.meter {
+  height: 4px;
+  background: #111;
+  margin-top: 12px;
+  border: 1px solid #333;
+}
+
+.meter span {
+  display: block;
+  height: 100%;
+  background: var(--crimson);
+  box-shadow: 0 0 10px var(--crimson);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
+}
+
+/* Mobile & Responsive */
+@media (max-width: 768px) {
+  .app-shell {
+    margin: 20px auto;
+    width: 94vw;
+    gap: 16px;
+  }
+
+  .hero,
+  .panel {
+    padding: 16px;
+  }
+
+  h1 {
+    font-size: 1.8rem;
+  }
+
+  .eyebrow {
+    font-size: 0.75rem;
+  }
+
+  .logo-container {
+    gap: 12px;
+  }
+
+  .chaos-logo {
+    width: 40px;
+    height: 40px;
+  }
+
+  .quick-menu {
+    flex-wrap: wrap;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+
+  .quick-menu a {
+    padding: 10px;
+    font-size: 0.8rem;
+  }
+
+  .controls-row {
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  input {
+    width: 100%;
+  }
+
+  /* Shorter canvas on mobile */
+  .dice-stage,
+  #dice-canvas,
+  .dice-box-host {
+    min-height: 160px;
+    height: 160px;
+  }
+
+  .card-stage,
+  .tarot-stage {
+    min-height: 180px;
+  }
+
+  .draw-grid img {
+    max-width: 90px;
+  }
+}
+
+@media (max-width: 480px) {
+  .quick-menu a {
+    flex: 1 1 100%;
+    /* Stack vertically on very small screens */
+  }
+}

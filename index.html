@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chaos Oracle - Dice, Cards, Tarot</title>
+  <link rel="icon" href="logo.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700;900&family=Rajdhani:wght@500;600;700&display=swap"
+    rel="stylesheet">
+  <link rel="stylesheet" href="styles.css" />
+  <!-- Three.js and Cannon for 3D physics dice -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/cannon.js/0.6.2/cannon.min.js"></script>
+  <script src="dice-roller-3d.js"></script>
+</head>
+
+<body>
+  <main class="app-shell">
+    <header class="hero">
+      <div class="logo-container">
+        <img src="logo.svg" alt="Chaos Star" class="chaos-logo" />
+        <div>
+          <p class="eyebrow">TTRPG Utility</p>
+          <h1>Chaos Oracle</h1>
+        </div>
+      </div>
+      <p class="subtitle">Roll dice, draw cards, and pull tarot in one place.</p>
+    </header>
+    <nav class="quick-menu" aria-label="Tool menu">
+      <a href="#tool-dice">Dice Roller</a>
+      <a href="#tool-cards">Playing Cards</a>
+      <a href="#tool-tarot">Tarot Oracle</a>
+    </nav>
+
+    <section class="panel" id="tool-dice" aria-labelledby="dice-title">
+      <div class="panel-head">
+        <h2 id="dice-title">Dice Roller</h2>
+        <p>Use presets or type notation like <code>2d6+d8+3</code>.</p>
+      </div>
+      <div class="dice-stage" id="dice-stage">
+        <div id="dice-box-host" class="dice-box-host" aria-hidden="true"></div>
+        <canvas id="dice-canvas" aria-hidden="true"></canvas>
+      </div>
+      <div class="controls-row">
+        <div class="preset-grid" id="dice-presets"></div>
+      </div>
+      <div class="controls-row">
+        <label for="dice-notation" class="sr-only">Dice notation</label>
+        <input id="dice-notation" type="text" value="1d20" autocomplete="off" />
+        <button id="roll-notation" class="action">Roll</button>
+      </div>
+      <div class="chip-row" id="dice-rolls" aria-live="polite"></div>
+      <div class="result" id="dice-result">Ready to roll.</div>
+    </section>
+
+    <section class="panel" id="tool-cards" aria-labelledby="cards-title">
+      <div class="panel-head">
+        <h2 id="cards-title">Playing Cards</h2>
+        <p>Draw from a standard shuffled 52-card deck.</p>
+      </div>
+      <div class="controls-row">
+        <div class="count-picker" aria-label="Playing card draw count">
+          <button id="card-count-dec" class="ghost count-btn" type="button" aria-label="Decrease card count">-</button>
+          <span id="card-count-value" class="count-value">1</span>
+          <button id="card-count-inc" class="ghost count-btn" type="button" aria-label="Increase card count">+</button>
+        </div>
+        <button id="draw-card" class="action">Draw Card</button>
+        <button id="reset-card-deck" class="ghost">Reset Deck</button>
+        <label class="toggle">
+          <input id="card-return-toggle" type="checkbox" />
+          <span>Return Drawn Cards</span>
+        </label>
+      </div>
+      <div class="card-stage">
+        <div id="card-draws" class="draw-grid count-1" aria-live="polite"></div>
+      </div>
+      <div class="result" id="card-result">Deck is fresh: 52 cards remaining.</div>
+      <div class="meter" aria-hidden="true">
+        <span id="card-meter"></span>
+      </div>
+    </section>
+
+    <section class="panel" id="tool-tarot" aria-labelledby="tarot-title">
+      <div class="panel-head">
+        <h2 id="tarot-title">Tarot Oracle</h2>
+        <p>Pull a card for omens, twists, or NPC motives.</p>
+      </div>
+      <div class="controls-row">
+        <div class="count-picker" aria-label="Tarot draw count">
+          <button id="tarot-count-dec" class="ghost count-btn" type="button"
+            aria-label="Decrease tarot count">-</button>
+          <span id="tarot-count-value" class="count-value">1</span>
+          <button id="tarot-count-inc" class="ghost count-btn" type="button"
+            aria-label="Increase tarot count">+</button>
+        </div>
+        <button id="draw-tarot" class="action">Draw Tarot</button>
+        <button id="reset-tarot-deck" class="ghost">Reset Tarot</button>
+        <label class="toggle">
+          <input id="allow-reversed" type="checkbox" checked />
+          <span>Allow Reversed</span>
+        </label>
+        <label class="toggle">
+          <input id="tarot-return-toggle" type="checkbox" />
+          <span>Return Drawn Cards</span>
+        </label>
+      </div>
+      <div class="tarot-stage">
+        <div id="tarot-draws" class="draw-grid count-1" aria-live="polite"></div>
+      </div>
+      <div class="result" id="tarot-result">Tarot deck is ready: 78 cards.</div>
+      <div class="meter" aria-hidden="true">
+        <span id="tarot-meter"></span>
+      </div>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+
+</html>

@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="currentColor">
+  <defs>
+    <!-- Single Arrow pointing up, centered at 50,50 origin for rotation -->
+    <path id="arrow" d="M47 50 L47 25 L35 25 L50 5 L65 25 L53 25 L53 50 Z" />
+  </defs>
+  
+  <!-- Group of 8 rotated arrows -->
+  <g transform="translate(0,0)">
+    <use href="#arrow" />
+    <use href="#arrow" transform="rotate(45 50 50)" />
+    <use href="#arrow" transform="rotate(90 50 50)" />
+    <use href="#arrow" transform="rotate(135 50 50)" />
+    <use href="#arrow" transform="rotate(180 50 50)" />
+    <use href="#arrow" transform="rotate(225 50 50)" />
+    <use href="#arrow" transform="rotate(270 50 50)" />
+    <use href="#arrow" transform="rotate(315 50 50)" />
+  </g>
+</svg>
