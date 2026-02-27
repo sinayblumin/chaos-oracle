@@ -1,6 +1,9 @@
 /**
  * Lightweight 3D Dice Controller using Three.js and Cannon-es
  * Compatible with static hosts.
+ *
+ * Face-Result Sync: After physics settles, the top face of each die is read
+ * and reported via an onSettled callback so the UI shows the correct number.
  */
 
 window.DiceRoller3D = (function () {
@@ -9,9 +12,11 @@ window.DiceRoller3D = (function () {
     let container;
     let frameId;
     let isInitialized = false;
+    let settledCallback = null;
+    let settledFired = false;
 
     // Physics constants
-    const floorY = -2;
+    const floorY = -6;
 
     function init(targetId) {
         if (isInitialized) return;
@@ -24,9 +29,9 @@ window.DiceRoller3D = (function () {
         const width = container.clientWidth || window.innerWidth;
         const height = container.clientHeight || 300;
 
-        camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 1000);
-        camera.position.set(0, 14, 10); // Steeper angle, slightly closer
-        camera.lookAt(0, 0, 0); // Look at center volume, not floor. This centers them better.
+        camera = new THREE.PerspectiveCamera(50, width / height, 0.1, 1000);
+        camera.position.set(0, 14, 8);
+        camera.lookAt(0, -3, 0);         // Center on where dice rest (floor=-6 + radius≈3)
 
         renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
         renderer.setSize(width, height);
@@ -40,7 +45,7 @@ window.DiceRoller3D = (function () {
         window.addEventListener('resize', onWindowResize, false);
 
         // 2. Lighting
-        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6); // Brighter
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
         scene.add(ambientLight);
 
         const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
@@ -50,43 +55,52 @@ window.DiceRoller3D = (function () {
         directionalLight.shadow.mapSize.height = 1024;
         scene.add(directionalLight);
 
-        const pointLight = new THREE.PointLight(0xffffff, 0.7); // Brighter
+        const pointLight = new THREE.PointLight(0xffffff, 0.7);
         pointLight.position.set(-10, 15, -10);
         scene.add(pointLight);
 
         // 3. Physics Setup
         world = new CANNON.World();
-        world.gravity.set(0, -9.82, 0);
+        world.gravity.set(0, -30, 0);  // Strong gravity, slightly less extreme for visible arcs
         world.allowSleep = true;
+        world.broadphase = new CANNON.NaiveBroadphase();
+        world.solver.iterations = 10;
 
-        // Add bounciness (dice on floor)
-        const diceMaterial = new CANNON.Material();
-        const contactMaterial = new CANNON.ContactMaterial(diceMaterial, diceMaterial, {
-            restitution: 0.7, // More bouncy like Google
-            friction: 0.1     // Less friction for more sliding
+        // Contact materials: satisfying bounce + grippy floor
+        const diceMaterial = new CANNON.Material('dice');
+        const floorMaterial = new CANNON.Material('floor');
+        const diceFloorContact = new CANNON.ContactMaterial(floorMaterial, diceMaterial, {
+            restitution: 0.4,    // Satisfying bounces — 2-3 visible hops
+            friction: 0.6        // High friction = dice stop rolling naturally
         });
-        world.addContactMaterial(contactMaterial);
+        const diceDiceContact = new CANNON.ContactMaterial(diceMaterial, diceMaterial, {
+            restitution: 0.35,
+            friction: 0.5
+        });
+        world.addContactMaterial(diceFloorContact);
+        world.addContactMaterial(diceDiceContact);
 
         // 4. Ground Plane (for physics and shadows)
         const groundGeometry = new THREE.PlaneGeometry(100, 100);
         const groundMaterial = new THREE.ShadowMaterial({ opacity: 0.3 });
         const groundMesh = new THREE.Mesh(groundGeometry, groundMaterial);
         groundMesh.rotation.x = -Math.PI / 2;
+        groundMesh.position.y = floorY;   // Align shadow plane with physics floor
         groundMesh.receiveShadow = true;
         scene.add(groundMesh);
 
         const groundShape = new CANNON.Plane();
-        const groundBody = new CANNON.Body({ mass: 0, material: diceMaterial });
+        const groundBody = new CANNON.Body({ mass: 0, material: floorMaterial });
         groundBody.addShape(groundShape);
         groundBody.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), -Math.PI / 2);
         groundBody.position.set(0, floorY, 0);
         world.addBody(groundBody);
 
-        // Walls to keep dice in view
-        createWall(0, 0, -6, 0, diceMaterial);
-        createWall(0, 0, 6, Math.PI, diceMaterial);
-        createWall(-6, 0, 0, Math.PI / 2, diceMaterial);
-        createWall(6, 0, 0, -Math.PI / 2, diceMaterial);
+        // Walls — tighter box to keep dice in view
+        createWall(0, 0, -5, 0, floorMaterial);
+        createWall(0, 0, 5, Math.PI, floorMaterial);
+        createWall(-5, 0, 0, Math.PI / 2, floorMaterial);
+        createWall(5, 0, 0, -Math.PI / 2, floorMaterial);
 
         animate();
         isInitialized = true;
@@ -103,12 +117,26 @@ window.DiceRoller3D = (function () {
 
     function animate() {
         frameId = requestAnimationFrame(animate);
-        world.step(1 / 60);
+        // Two sub-steps per frame for smoother, faster simulation
+        world.step(1 / 60, 1 / 60, 2);
 
         dice.forEach(d => {
             d.mesh.position.copy(d.body.position);
             d.mesh.quaternion.copy(d.body.quaternion);
         });
+
+        // Check if all dice have settled
+        if (!settledFired && dice.length > 0 && settledCallback) {
+            const allSleeping = dice.every(d =>
+                d.body.sleepState === CANNON.Body.SLEEPING ||
+                (d.body.velocity.length() < 0.05 && d.body.angularVelocity.length() < 0.05)
+            );
+            if (allSleeping) {
+                settledFired = true;
+                const results = readAllTopFaces();
+                settledCallback(results);
+            }
+        }
 
         renderer.render(scene, camera);
     }
@@ -133,19 +161,18 @@ window.DiceRoller3D = (function () {
         if (!isLabel) {
             ctx.fillStyle = color;
             ctx.fillRect(0, 0, canvas.width, canvas.height);
-            // Removed baked-in gradient to allow true material color to show (fixes D6 wash-out)
         } else {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
         }
 
-        // Text - MEGA SIZE with white border
-        ctx.fillStyle = '#ffffff'; // All-white fill
+        // Text
+        ctx.fillStyle = '#ffffff';
         ctx.font = `900 ${fontSize}px "Segoe UI", Arial, sans-serif`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
 
-        ctx.strokeStyle = '#ffffff'; // All-white stroke for MEGA boldness
-        ctx.lineWidth = fontSize / 16; // Proportional scaling (was fixed 14)
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = fontSize / 16;
         ctx.strokeText(text, canvas.width / 2, canvas.height / 2);
         ctx.fillText(text, canvas.width / 2, canvas.height / 2);
 
@@ -160,16 +187,20 @@ window.DiceRoller3D = (function () {
         });
     }
 
+    /**
+     * Add labels to a polyhedral mesh AND store face data for top-face reading.
+     * Returns an array of { normal: Vector3, value: string } for later querying.
+     */
     function addLabelsToMesh(mesh, sides, values = null) {
         const geometry = mesh.geometry.isBufferGeometry ? mesh.geometry.toNonIndexed() : mesh.geometry;
         const pos = geometry.attributes.position;
         const normal = geometry.attributes.normal;
-        const diceColor = '#ffcc00';
 
-        // Filter valid face centers (avoid duplicates on same face)
-        // For polyhedral dice (sides 4-20), we group by face normal using Dot Product
-        // This is robust against floating point noise and "bent" faces (like D10 kites)
+        // Group triangles into faces by normal similarity
+        // Use normal-based grouping for ALL dice (including D100)
         const groups = [];
+        // D100 has smaller faces, so use a tighter threshold
+        const dotThreshold = sides > 20 ? 0.95 : 0.9;
 
         for (let i = 0; i < pos.count; i += 3) {
             const v1 = new THREE.Vector3(pos.getX(i), pos.getY(i), pos.getZ(i));
@@ -177,88 +208,168 @@ window.DiceRoller3D = (function () {
             const v3 = new THREE.Vector3(pos.getX(i + 2), pos.getY(i + 2), pos.getZ(i + 2));
             const center = new THREE.Vector3().add(v1).add(v2).add(v3).divideScalar(3);
 
-            if (sides <= 20) {
-                // Determine face normal
-                let cb = new THREE.Vector3();
-
-                // CRITICAL FIX: Use the geometry's vertex normal if available!
-                // This adheres to the manually unified normals of the D10, 
-                // ensuring the two triangles of the kite are treated as ONE face.
-                if (normal) {
-                    // Use normal from first vertex of triangle (assuming flat shading/unified)
-                    cb.set(normal.getX(i), normal.getY(i), normal.getZ(i));
-                } else {
-                    // Fallback to calculating from positions
-                    const ab = new THREE.Vector3().subVectors(v1, v2);
-                    const ac = new THREE.Vector3().subVectors(v3, v2);
-                    cb.crossVectors(ac, ab).normalize();
-                }
-
-                // Find existing group with similar normal (dot > 0.9 ~ 25 degrees tolerance)
-                let bestGroup = null;
-                for (const g of groups) {
-                    if (g.normal.dot(cb) > 0.9) {
-                        bestGroup = g;
-                        break;
-                    }
-                }
-
-                if (bestGroup) {
-                    bestGroup.centers.push(center);
-                } else {
-                    groups.push({ normal: cb, centers: [center] });
-                }
+            // Compute face normal from triangle vertices
+            let cb = new THREE.Vector3();
+            if (normal) {
+                cb.set(normal.getX(i), normal.getY(i), normal.getZ(i));
             } else {
-                // Fallback for D100
-                const minDist = sides > 30 ? 0.3 : 0.6;
-                let found = false;
-                for (const g of groups) {
-                    if (g.centers[0].distanceTo(center) < minDist) {
-                        found = true;
-                        break;
-                    }
+                const ab = new THREE.Vector3().subVectors(v1, v2);
+                const ac = new THREE.Vector3().subVectors(v3, v2);
+                cb.crossVectors(ac, ab).normalize();
+            }
+
+            let bestGroup = null;
+            for (const g of groups) {
+                if (g.normal.dot(cb) > dotThreshold) {
+                    bestGroup = g;
+                    break;
                 }
-                if (!found) groups.push({ normal: null, centers: [center] });
+            }
+
+            if (bestGroup) {
+                bestGroup.centers.push(center);
+            } else {
+                groups.push({ normal: cb.clone(), centers: [center] });
             }
         }
 
-        // Calculate average center for each group
-        const faceCenters = groups.map(g => {
+        // Calculate average center and normal for each group
+        const faceData = groups.map(g => {
             const avg = new THREE.Vector3();
             g.centers.forEach(c => avg.add(c));
-            return avg.divideScalar(g.centers.length);
+            avg.divideScalar(g.centers.length);
+            return { center: avg, normal: g.normal.clone().normalize() };
         });
 
-        // Sort centers for deterministic numbering
-        // For D10, we want to ensure height-based sorting (0-4 on top, 5-9 on bottom)
-        faceCenters.sort((a, b) => (b.y - a.y) || (a.x - b.x));
+        // Sort for deterministic numbering
+        faceData.sort((a, b) => (b.center.y - a.center.y) || (a.center.x - b.center.x));
 
-        faceCenters.slice(0, sides).forEach((center, idx) => {
+        // Build face info array and add labels
+        const faceInfos = [];
+        faceData.slice(0, sides).forEach((face, idx) => {
             const val = values ? values[idx] : (idx + 1).toString();
-            // Scale label as large as possible for the shape
+
+            // Store for top-face reading later
+            faceInfos.push({
+                normal: face.normal.clone(),
+                value: val
+            });
+
+            // Scale label
             let labelSize = 1.4;
             if (sides > 12) labelSize = 1.2;
             if (sides > 20) labelSize = 0.8;
             if (sides > 50) labelSize = 1.2;
 
             const labelGeom = new THREE.PlaneGeometry(labelSize, labelSize);
-            const fontScale = sides > 50 ? 120 : 180; // Scale 450 -> 220 as requested
+            const fontScale = sides > 50 ? 120 : 180;
             const labelMat = createDiceMaterial('', val, fontScale, true);
             const labelMesh = new THREE.Mesh(labelGeom, labelMat);
 
-            // Position slightly more outward but tightly to ensure no clipping
-            labelMesh.position.copy(center).multiplyScalar(1.03);
-            labelMesh.lookAt(center.clone().multiplyScalar(2));
+            labelMesh.position.copy(face.center).multiplyScalar(1.03);
+            labelMesh.lookAt(face.center.clone().multiplyScalar(2));
             mesh.add(labelMesh);
         });
+
+        return faceInfos;
     }
 
-    function createDice(sides = 6) {
+    /**
+     * Read the top face of a single die by transforming face normals
+     * to world space and finding which one points most upward (Y+).
+     */
+    function readTopFace(die) {
+        if (!die.faceInfos || die.faceInfos.length === 0) {
+            // D6 uses material indices, handle separately
+            return readTopFaceD6(die);
+        }
+
+        const up = new THREE.Vector3(0, 1, 0);
+        const meshQuat = die.mesh.quaternion;
+        let bestDot = -Infinity;
+        let bestValue = "?";
+
+        die.faceInfos.forEach(face => {
+            // Transform local normal to world space using die's current rotation
+            const worldNormal = face.normal.clone().applyQuaternion(meshQuat);
+            const dot = worldNormal.dot(up);
+            if (dot > bestDot) {
+                bestDot = dot;
+                bestValue = face.value;
+            }
+        });
+
+        return bestValue;
+    }
+
+    /**
+     * Read top face for D6 (uses box geometry with 6 material indices).
+     * Box face normals in Three.js BoxGeometry order: +X, -X, +Y, -Y, +Z, -Z
+     * Material indices map to faces 1-6 in that order.
+     */
+    function readTopFaceD6(die) {
+        const faceNormals = [
+            new THREE.Vector3(1, 0, 0),   // material 0 → face 1
+            new THREE.Vector3(-1, 0, 0),  // material 1 → face 2
+            new THREE.Vector3(0, 1, 0),   // material 2 → face 3
+            new THREE.Vector3(0, -1, 0),  // material 3 → face 4
+            new THREE.Vector3(0, 0, 1),   // material 4 → face 5
+            new THREE.Vector3(0, 0, -1)   // material 5 → face 6
+        ];
+
+        const up = new THREE.Vector3(0, 1, 0);
+        const meshQuat = die.mesh.quaternion;
+        let bestDot = -Infinity;
+        let bestIdx = 0;
+
+        faceNormals.forEach((normal, idx) => {
+            const worldNormal = normal.clone().applyQuaternion(meshQuat);
+            const dot = worldNormal.dot(up);
+            if (dot > bestDot) {
+                bestDot = dot;
+                bestIdx = idx;
+            }
+        });
+
+        return String(bestIdx + 1); // faces labeled 1-6
+    }
+
+    /**
+     * Read top faces for all dice currently in the scene.
+     * Combines percentile pairs (tens + ones) into a single D100 result.
+     * Returns array of { sides: number, value: string }
+     */
+    function readAllTopFaces() {
+        const results = [];
+        let i = 0;
+        while (i < dice.length) {
+            const die = dice[i];
+            // Check for percentile pair
+            if (die.role === 'tens' && i + 1 < dice.length && dice[i + 1].role === 'ones') {
+                const tensVal = parseInt(readTopFace(die), 10) || 0;   // 0, 10, 20, ..., 90
+                const onesVal = parseInt(readTopFace(dice[i + 1]), 10) || 0; // 0-9
+                let total = tensVal + onesVal;
+                if (total === 0) total = 100; // 00 + 0 = 100%
+                results.push({ sides: 100, value: String(total) });
+                i += 2; // Skip both dice
+            } else {
+                results.push({
+                    sides: die.sides,
+                    value: readTopFace(die)
+                });
+                i++;
+            }
+        }
+        return results;
+    }
+
+    function createDice(sides = 6, customLabels = null, customRole = null) {
         let geometry;
         let shape;
         let mass = 1.8;
         let materials = [];
         const baseSize = 3.2;
+        let faceInfos = []; // Will store face data for top-face reading
 
         if (sides === 6) {
             geometry = new THREE.BoxGeometry(baseSize * 0.9, baseSize * 0.9, baseSize * 0.9);
@@ -266,6 +377,7 @@ window.DiceRoller3D = (function () {
             for (let i = 1; i <= 6; i++) {
                 materials.push(createDiceMaterial(diceColor, i.toString(), 140));
             }
+            // D6 faceInfos are handled by readTopFaceD6, so leave empty
         } else {
             const baseMat = new THREE.MeshPhongMaterial({ color: diceColor, shininess: 40, side: THREE.DoubleSide });
             switch (sides) {
@@ -278,12 +390,11 @@ window.DiceRoller3D = (function () {
                     shape = new CANNON.Sphere(baseSize * 1.1);
                     break;
                 case 10:
-                    // D10 Pentagonal Trapezohedron with Unified Normals (looks like 10 faces, not 20)
-                    const r = 1.3;      // Radius
-                    const h = 1.6;      // Height
-                    const tHeight = 0.3; // Waist offset
+                    // D10 Pentagonal Trapezohedron with Unified Normals
+                    const r = 1.3;
+                    const h = 1.6;
+                    const tHeight = 0.3;
 
-                    // Vertices
                     const northPole = [0, h, 0];
                     const southPole = [0, -h, 0];
 
@@ -300,51 +411,17 @@ window.DiceRoller3D = (function () {
                     const vertices = [];
                     const normals = [];
 
-                    // Helper to push triangle with specific normal
                     function pushTri(v1, v2, v3, n) {
                         vertices.push(...v1, ...v2, ...v3);
                         normals.push(n.x, n.y, n.z, n.x, n.y, n.z, n.x, n.y, n.z);
                     }
 
-                    // Build 10 faces
                     for (let i = 0; i < 5; i++) {
-                        // Top Kite: NorthPole, Upper[i], Lower[i], Upper[next]
-                        // We need to form a kite from: NorthPole -> Upper[i] -> Lower[i] -> Upper[(i+1)%5]
-                        // Actually standard trapezohedron faces are:
-                        // Top faces connect NorthPole to Upper[i] and Upper[i+1]? No, that's a pyramid.
-                        // A D10 face connects: NorthPole, Upper[i], Lower[i] ?? 
-                        // Let's use the standard connectivity:
-                        // Face K_top_i: NorthPole, Upper[i], Lower[i], Upper[next] is not planar usually.
-                        // Standard: NorthPole, Upper[i], Lower[i], Upper[(i+1)%5]... 
-
-                        // Let's construct it symmetrically.
-                        // Face i (Top): Pole, Upper[i], Lower[i], Upper[(i+1)%5] ? No.
-                        // Let's look at the shape: Zig-zag equator.
-                        // Top faces meet at North Pole. There are 5 top faces? No, D10 has 10 faces meeting at 2 poles?
-                        // A D10 has 5 faces sharing the top pole, 5 sharing the bottom.
-                        // Face i: NorthPole, Upper[i], Lower[i], Upper[(i+1)%5] -- if this is the quad.
-
-                        // Let's use indices:
                         const p = new THREE.Vector3(...northPole);
                         const u1 = new THREE.Vector3(...upperRing[i]);
                         const u2 = new THREE.Vector3(...upperRing[(i + 1) % 5]);
-                        const l = new THREE.Vector3(...lowerRing[i]); // The point between u1 and u2? 
+                        const l = new THREE.Vector3(...lowerRing[i]);
 
-                        // Actually, LowerRing is offset by 36deg.
-                        // So L[i] is between U[i] and U[i+1].
-                        // So Quad is: P -> u1 -> l -> u2.
-
-                        // Calculate Plane Normal for this Quad (Kite)
-                        // defined by P, u1, l, u2.
-                        // Normal of P-u1-u2 (Triangle) is close.
-                        const n = new THREE.Vector3().crossVectors(
-                            new THREE.Vector3().subVectors(u1, p),
-                            new THREE.Vector3().subVectors(u2, p)
-                        ).normalize(); // Use the logic plane of the "pyramid" side roughly
-
-                        // Refined normal: Average of the two constituent triangles
-                        const n1 = new THREE.Vector3().crossVectors(new THREE.Vector3().subVectors(u1, p), new THREE.Vector3().subVectors(l, p)).normalize().negate(); // check winding
-                        // Winding P->U1->L
                         const t1_v1 = new THREE.Vector3().subVectors(u1, p);
                         const t1_v2 = new THREE.Vector3().subVectors(l, p);
                         const norm1 = new THREE.Vector3().crossVectors(t1_v2, t1_v1).normalize();
@@ -355,19 +432,15 @@ window.DiceRoller3D = (function () {
 
                         const avgNorm = new THREE.Vector3().addVectors(norm1, norm2).normalize();
 
-                        // Push Top Kite (2 triangles) with Unified Normal
                         pushTri(northPole, upperRing[i], lowerRing[i], avgNorm);
                         pushTri(northPole, lowerRing[i], upperRing[(i + 1) % 5], avgNorm);
 
-                        // Push Bottom Kite (mirror)
-                        // SouthPole, Lower[i], Upper[(i+1)%5], Lower[(i+1)%5]
-                        // Note: indexing aligns with the gap
+                        // Bottom kite
                         const sp = new THREE.Vector3(...southPole);
                         const l1 = new THREE.Vector3(...lowerRing[i]);
                         const l2 = new THREE.Vector3(...lowerRing[(i + 1) % 5]);
                         const uNext = new THREE.Vector3(...upperRing[(i + 1) % 5]);
 
-                        // Calculate normal
                         const b_t1_v1 = new THREE.Vector3().subVectors(l1, sp);
                         const b_t1_v2 = new THREE.Vector3().subVectors(uNext, sp);
                         const b_norm1 = new THREE.Vector3().crossVectors(b_t1_v1, b_t1_v2).normalize();
@@ -396,12 +469,6 @@ window.DiceRoller3D = (function () {
                     geometry = new THREE.IcosahedronGeometry(baseSize * 1.4, 0);
                     shape = new CANNON.Sphere(baseSize * 1.3);
                     break;
-                case 100:
-                    // Faceted Golf-ball Zocchihedron
-                    geometry = new THREE.IcosahedronGeometry(baseSize * 1.7, 1);
-                    shape = new CANNON.Sphere(baseSize * 1.7);
-                    mass = 3.5;
-                    break;
                 default:
                     geometry = new THREE.BoxGeometry(baseSize, baseSize, baseSize);
                     shape = new CANNON.Box(new CANNON.Vec3(baseSize / 2, baseSize / 2, baseSize / 2));
@@ -414,41 +481,73 @@ window.DiceRoller3D = (function () {
         mesh.receiveShadow = true;
 
         if (sides !== 6) {
-            let labels = null;
-            if (sides === 10) labels = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"];
-            addLabelsToMesh(mesh, sides, labels);
+            // Use customLabels if provided, otherwise default for the die type
+            let labels = customLabels;
+            if (!labels && sides === 10) labels = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"];
+            faceInfos = addLabelsToMesh(mesh, sides, labels);
         }
 
         scene.add(mesh);
 
         const body = new CANNON.Body({
             mass: mass,
-            linearDamping: 0.4,
-            angularDamping: 0.4,
+            linearDamping: 0.25,   // Natural deceleration
+            angularDamping: 0.25,  // Prevents endless spinning
             allowSleep: true,
-            sleepSpeedLimit: 0.2,
-            sleepTimeLimit: 0.8
+            sleepSpeedLimit: 0.08, // Very still before sleeping
+            sleepTimeLimit: 0.4    // Quick result once still
         });
         body.addShape(shape);
 
-        // Physics material
-        const mat = new CANNON.Material();
+        const mat = new CANNON.Material('dice');
         body.material = mat;
-        if (world.contactmaterials && world.contactmaterials.length > 0) {
-            // Use existing contact material
-        }
 
-        body.position.set(Math.random() * 4 - 2, 8, Math.random() * 4 - 2);
-        body.quaternion.setFromEuler(Math.random() * 10, Math.random() * 10, Math.random() * 10);
-        body.velocity.set(Math.random() * 8 - 4, -15, Math.random() * 8 - 4);
-        body.angularVelocity.set(Math.random() * 20 - 10, Math.random() * 20 - 10, Math.random() * 20 - 10);
+        // Spawn positioning: dice tossed from above/behind, landing at center
+        const diceIdx = dice.length;
+        const totalDice = Math.max(diceIdx + 1, 1);
+        const xOffset = (diceIdx - (totalDice - 1) / 2) * 1.8;
+
+        body.position.set(
+            xOffset + (Math.random() - 0.5),       // Centered with slight jitter
+            4 + Math.random() * 3,                  // Spawn above landing zone
+            -3 + (Math.random() - 0.5) * 2          // Behind center
+        );
+        body.quaternion.setFromEuler(
+            Math.random() * Math.PI * 2,
+            Math.random() * Math.PI * 2,
+            Math.random() * Math.PI * 2
+        );
+        // Natural throw: arcing forward and down like a hand toss
+        body.velocity.set(
+            (Math.random() - 0.5) * 5,             // Slight lateral scatter
+            -12 - Math.random() * 5,                // Downward momentum
+            5 + Math.random() * 4                   // Forward throw into view
+        );
+        body.angularVelocity.set(
+            (Math.random() - 0.5) * 25,             // Satisfying tumble
+            (Math.random() - 0.5) * 25,
+            (Math.random() - 0.5) * 25
+        );
 
         world.addBody(body);
-        dice.push({ mesh, body, sides });
+        dice.push({ mesh, body, sides, faceInfos, role: customRole || null });
     }
 
-    function roll(notation) {
+    /**
+     * Create a percentile pair: two D10s, one for tens (00-90) and one for ones (0-9).
+     */
+    function createPercentilePair() {
+        // Tens die: 00, 10, 20, ... 90
+        createDice(10, ["00", "10", "20", "30", "40", "50", "60", "70", "80", "90"], 'tens');
+        // Ones die: 0, 1, 2, ... 9
+        createDice(10, ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"], 'ones');
+    }
+
+    function roll(notation, onSettled) {
         clear();
+        settledCallback = onSettled || null;
+        settledFired = false;
+
         const diceRegex = /(\d+)d(\d+)/g;
         let match;
         let found = false;
@@ -458,12 +557,20 @@ window.DiceRoller3D = (function () {
             const sides = parseInt(match[2]);
 
             for (let i = 0; i < Math.min(count, 10); i++) {
-                createDice(sides);
+                if (sides === 100) {
+                    createPercentilePair();
+                } else {
+                    createDice(sides);
+                }
             }
             found = true;
         }
 
         if (!found) createDice(6);
+    }
+
+    function getResults() {
+        return readAllTopFaces();
     }
 
     function onWindowResize() {
@@ -478,6 +585,7 @@ window.DiceRoller3D = (function () {
     return {
         init,
         roll,
-        clear
+        clear,
+        getResults
     };
 })();

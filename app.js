@@ -150,56 +150,63 @@ function rollDice(notation) {
     return;
   }
 
-  const rollDetails = [];
-  const termTexts = [];
-  let diceTotal = 0;
+  // Calculate modifier total (constant terms like +3)
   let modifierTotal = 0;
-
-  parsed.terms.forEach((term, index) => {
-    const signText = term.sign === -1 ? (index === 0 ? "-" : " - ") : index === 0 ? "" : " + ";
-
+  parsed.terms.forEach((term) => {
     if (term.kind === "const") {
       modifierTotal += term.sign * term.value;
-      termTexts.push(`${signText}${term.value}`);
-      return;
     }
-
-    const values = [];
-    for (let i = 0; i < term.count; i += 1) {
-      const value = randInt(1, term.sides);
-      values.push(value);
-      rollDetails.push({
-        sides: term.sides,
-        value,
-        sign: term.sign
-      });
-      diceTotal += term.sign * value;
-    }
-
-    termTexts.push(`${signText}${term.count}d${term.sides}:[${values.join(",")}]`);
   });
 
-  if (rollDetails.length === 0) {
+  const diceTerms = parsed.terms.filter((term) => term.kind === "dice");
+  if (diceTerms.length === 0) {
     showError(ui.diceResult, "Add at least one dice term like d20 or 2d6.");
     return;
   }
 
-  const total = diceTotal + modifierTotal;
-
-  ui.diceResult.classList.remove("bad");
-  ui.diceResult.textContent = `${parsed.normalized} -> ${termTexts.join("")} = ${total}`;
-
-  renderDiceRolls(rollDetails);
+  // Build the notation string for the 3D roller
   const diceBoxPlan = planDiceBoxRoll(parsed);
-  console.log("Dice roll plan:", { ready: dice3DState.ready, hasPlan: !!diceBoxPlan, plan: diceBoxPlan });
 
   if (dice3DState.ready && diceBoxPlan) {
+    // --- 3D PATH: Let physics determine the result ---
     console.log("Using 3D dice rendering");
     ui.diceStage.classList.add("use-3d");
-    rollDiceBox3D(diceBoxPlan);
+    ui.diceResult.classList.remove("bad");
+    ui.diceResult.textContent = `Rolling ${parsed.normalized}...`;
+    ui.diceRolls.innerHTML = ""; // Clear chips until settled
+
+    rollDiceBox3D(diceBoxPlan, parsed, modifierTotal);
   } else {
-    console.log("Using 2D canvas fallback", { ready: dice3DState.ready, plan: diceBoxPlan });
+    // --- 2D FALLBACK: Generate random values ourselves ---
+    console.log("Using 2D canvas fallback");
     ui.diceStage.classList.remove("use-3d");
+
+    const rollDetails = [];
+    const termTexts = [];
+    let diceTotal = 0;
+
+    parsed.terms.forEach((term, index) => {
+      const signText = term.sign === -1 ? (index === 0 ? "-" : " - ") : index === 0 ? "" : " + ";
+
+      if (term.kind === "const") {
+        termTexts.push(`${signText}${term.value}`);
+        return;
+      }
+
+      const values = [];
+      for (let i = 0; i < term.count; i += 1) {
+        const value = randInt(1, term.sides);
+        values.push(value);
+        rollDetails.push({ sides: term.sides, value, sign: term.sign });
+        diceTotal += term.sign * value;
+      }
+      termTexts.push(`${signText}${term.count}d${term.sides}:[${values.join(",")}]`);
+    });
+
+    const total = diceTotal + modifierTotal;
+    ui.diceResult.classList.remove("bad");
+    ui.diceResult.textContent = `${parsed.normalized} -> ${termTexts.join("")} = ${total}`;
+    renderDiceRolls(rollDetails);
     renderDiceScene(rollDetails);
   }
 }
@@ -210,9 +217,7 @@ async function initDiceBox3D() {
   console.log("Starting DiceRoller3D initialization...");
   dice3DState.loading = true;
   try {
-    // DiceRoller3D is loaded via script tag in index.html
     window.DiceRoller3D.init("dice-box-host");
-
     dice3DState.box = window.DiceRoller3D;
     dice3DState.ready = true;
     console.log("Lightweight 3D dice ready!");
@@ -227,15 +232,60 @@ async function initDiceBox3D() {
   }
 }
 
-async function rollDiceBox3D(plan) {
-  if (!dice3DState.box) return;
+function rollDiceBox3D(plan, parsed, modifierTotal) {
+  if (!dice3DState.box) {
+    console.warn("rollDiceBox3D called but box not initialized");
+    return;
+  }
 
-  console.log("Rolling 3D dice with lightweight renderer:", plan);
+  console.log("Rolling 3D dice with plan:", plan);
   try {
-    // We can just use the normalized notation or reconstruct it
-    // For now, DiceRoller3D.roll handles simple notations like "2d6"
-    // plan.first is usually something like "1d20"
-    dice3DState.box.roll(plan.first);
+    // Pass settled callback — this fires when all dice have stopped moving
+    dice3DState.box.roll(plan.first, function onSettled(results) {
+      console.log("3D dice settled, top faces:", results);
+
+      // Build roll details from the actual top-face values
+      const rollDetails = [];
+      const termTexts = [];
+      let diceTotal = 0;
+      let resultIdx = 0;
+
+      parsed.terms.forEach((term, index) => {
+        const signText = term.sign === -1 ? (index === 0 ? "-" : " - ") : index === 0 ? "" : " + ";
+
+        if (term.kind === "const") {
+          termTexts.push(`${signText}${term.value}`);
+          return;
+        }
+
+        const values = [];
+        for (let i = 0; i < term.count; i += 1) {
+          // Read value from settled 3D die
+          let rawValue = "?";
+          if (resultIdx < results.length) {
+            rawValue = results[resultIdx].value;
+            resultIdx++;
+          }
+
+          // Parse the face value to a number
+          let numValue = parseInt(rawValue, 10);
+          // D10 face "0" means 10
+          if (term.sides === 10 && rawValue === "0") numValue = 10;
+          if (isNaN(numValue)) numValue = 1; // Safety fallback
+
+          values.push(numValue);
+          rollDetails.push({ sides: term.sides, value: numValue, sign: term.sign });
+          diceTotal += term.sign * numValue;
+        }
+
+        termTexts.push(`${signText}${term.count}d${term.sides}:[${values.join(",")}]`);
+      });
+
+      const total = diceTotal + modifierTotal;
+      ui.diceResult.classList.remove("bad");
+      ui.diceResult.textContent = `${parsed.normalized} -> ${termTexts.join("")} = ${total}`;
+      renderDiceRolls(rollDetails);
+    });
   } catch (error) {
     console.error("3D dice roll failed:", error);
     ui.diceStage.classList.remove("use-3d");
@@ -248,48 +298,16 @@ function planDiceBoxRoll(parsed) {
     return null;
   }
 
-  // Dice-Box can't represent negative dice terms in a single visual plan.
+  // Can't represent negative dice terms visually
   if (diceTerms.some((term) => term.sign < 0)) {
     return null;
   }
 
-  const modifier = parsed.terms
-    .filter((term) => term.kind === "const")
-    .reduce((sum, term) => sum + term.sign * term.value, 0);
-
-  const first = diceTerms[0];
-  const firstNotationBase = `${first.count}d${first.sides}`;
-  const firstNotation = modifier === 0
-    ? firstNotationBase
-    : `${firstNotationBase}${modifier > 0 ? `+${modifier}` : modifier}`;
-
-  const additions = diceTerms.slice(1).map((term) => `${term.count}d${term.sides}`);
+  // Build a single notation string for all dice
+  const parts = diceTerms.map((term) => `${term.count}d${term.sides}`);
   return {
-    first: firstNotation,
-    additions
+    first: parts.join("+")
   };
-}
-
-async function rollDiceBox3D(plan) {
-  if (!dice3DState.box) {
-    console.warn("rollDiceBox3D called but box not initialized");
-    return;
-  }
-
-  console.log("Rolling 3D dice with plan:", plan);
-  try {
-    dice3DState.box.clear();
-    console.log("Rolling notation:", plan.first);
-    await dice3DState.box.roll(plan.first);
-    for (const add of plan.additions) {
-      console.log("Adding dice:", add);
-      await dice3DState.box.add(add);
-    }
-    console.log("3D dice roll commands sent successfully");
-  } catch (error) {
-    console.error("3D dice roll failed:", error);
-    ui.diceStage.classList.remove("use-3d");
-  }
 }
 
 function parseDiceExpression(notation) {
